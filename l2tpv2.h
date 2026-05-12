@@ -34,6 +34,8 @@
 #include <vnet/dpo/dpo.h>
 #include <vnet/adj/adj_types.h>
 #include <vnet/fib/fib_table.h>
+#include <vnet/fib/fib_node.h>
+#include <vnet/fib/fib_entry_track.h>
 #include <vlib/vlib.h>
 #include <vppinfra/bihash_16_8.h>
 
@@ -83,9 +85,16 @@ extern char *l2tpv2_error_strings[];
 /* Per-tunnel state. Control-channel state (Ns/Nr, retransmit queue,
  * slow-start window) lives in the userspace control plane; the dataplane
  * only needs addressing and IDs to build outgoing packets. */
-typedef struct
+typedef struct l2tpv2_tunnel_t_ l2tpv2_tunnel_t;
+
+struct l2tpv2_tunnel_t_
 {
   CLIB_CACHE_LINE_ALIGN_MARK (cacheline0);
+
+  /* Embedded FIB node so the tunnel can register for forwarding-state
+   * back-walks on the peer IP (loopback / routed peers). The fib_node
+   * field is owned by VPP's FIB machinery; do not move it. */
+  fib_node_t node;
 
   /* Endpoint addresses (IPv4 only in v1). */
   ip4_address_t local_ip;
@@ -104,10 +113,17 @@ typedef struct
   /* Egress IP DF bit (RFC 2661 §4.4.5 recommends DF=0). */
   u8 df_bit;
 
+  /* FIB tracking for the peer IP. Allocated at first session add;
+   * released at last session del. The midchain adjacency restacks on
+   * this entry's contributed DPO whenever the peer's forwarding state
+   * changes. */
+  u32 encap_fib_index;
+  fib_node_index_t fib_entry_index;
+  u32 sibling_index;
+
   /* Number of sessions currently bound to this tunnel. */
   u32 ref_count;
-
-} l2tpv2_tunnel_t;
+};
 
 /* Per-session state. */
 typedef struct
@@ -208,6 +224,10 @@ STATIC_ASSERT_SIZEOF (l2tpv2_tunnel_key_t, 16);
 
 typedef struct
 {
+  /* FIB node type — registered at init so the tunnel back-walks
+   * forwarding changes for the peer IP. */
+  fib_node_type_t fib_node_type;
+
   /* Tunnel and session pools. */
   l2tpv2_tunnel_t *tunnels;
   l2tpv2_session_t *sessions;

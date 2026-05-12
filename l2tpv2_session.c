@@ -49,6 +49,8 @@ vnet_l2tpv2_add_del_tunnel (vnet_l2tpv2_add_del_tunnel_args_t *a,
       t->peer_udp_port = a->peer_udp_port ? a->peer_udp_port : L2TPV2_UDP_PORT;
       t->df_bit = a->df_bit;
       t->ref_count = 0;
+      t->encap_fib_index = 0; /* default FIB (global table 0) */
+      t->fib_entry_index = FIB_NODE_INDEX_INVALID;
 
       kv.value = t - l2m->tunnels;
       clib_bihash_add_del_16_8 (&l2m->tunnel_table, &kv, 1 /* is_add */);

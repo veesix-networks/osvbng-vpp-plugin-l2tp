@@ -104,11 +104,24 @@ format_l2tpv2_header_with_length (u8 *s, va_list *args)
   return s;
 }
 
+/* Update the midchain adjacency for a session. The rewrite (IP+UDP+
+ * L2TPv2) is built once; the adjacency stacks on either:
+ *   - a per-session forced egress interface (when encap_if_index is
+ *     set, mirroring PPPoE's interface_tx_dpo pattern), OR
+ *   - the FIB-resolved DPO for the tunnel's peer IP (when
+ *     encap_if_index is ~0). This is the loopback / routed-peer case.
+ *
+ * For the FIB path we contribute forwarding once at session-add; if
+ * the route to the peer changes during the session's lifetime the
+ * midchain still points at the old path. Tunnels created after the
+ * route change pick up the new path. Full back-walk restacking is
+ * deferred until a tunnel-level fib_node registration lands. */
 static void
 l2tpv2_update_adj (vnet_main_t *vnm, u32 sw_if_index, adj_index_t ai)
 {
   l2tpv2_main_t *l2m = &l2tpv2_main;
   l2tpv2_session_t *sess;
+  l2tpv2_tunnel_t *tunnel;
   ip_adjacency_t *adj;
   dpo_id_t dpo = DPO_INVALID;
   u32 session_index;
@@ -118,6 +131,7 @@ l2tpv2_update_adj (vnet_main_t *vnm, u32 sw_if_index, adj_index_t ai)
   adj = adj_get (ai);
   session_index = l2m->session_index_by_sw_if_index[sw_if_index];
   sess = pool_elt_at_index (l2m->sessions, session_index);
+  tunnel = pool_elt_at_index (l2m->tunnels, sess->tunnel_index);
 
   switch (adj->lookup_next_index)
     {
@@ -146,8 +160,30 @@ l2tpv2_update_adj (vnet_main_t *vnm, u32 sw_if_index, adj_index_t ai)
       break;
     }
 
-  interface_tx_dpo_add_or_lock (vnet_link_to_dpo_proto (adj->ia_link),
-				sess->encap_if_index, &dpo);
+  if (sess->encap_if_index != ~0u)
+    {
+      interface_tx_dpo_add_or_lock (vnet_link_to_dpo_proto (adj->ia_link),
+				    sess->encap_if_index, &dpo);
+    }
+  else
+    {
+      fib_prefix_t pfx = {
+	.fp_proto = FIB_PROTOCOL_IP4,
+	.fp_len = 32,
+      };
+      pfx.fp_addr.ip4.as_u32 = tunnel->peer_ip.as_u32;
+      fib_node_index_t fei =
+	fib_table_lookup (tunnel->encap_fib_index, &pfx);
+      if (fei == FIB_NODE_INDEX_INVALID)
+	{
+	  /* No route to peer; leave the midchain unstacked. Packets
+	   * destined to the session will drop until the operator
+	   * installs a route. */
+	  return;
+	}
+      fib_entry_contribute_forwarding (
+	fei, FIB_FORW_CHAIN_TYPE_UNICAST_IP4, &dpo);
+    }
   adj_nbr_midchain_stack (ai, &dpo);
   dpo_reset (&dpo);
 }
