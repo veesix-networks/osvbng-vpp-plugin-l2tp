@@ -15,6 +15,7 @@ add_vpp_plugin(l2tpv2
   l2tpv2_api.c
   l2tpv2_input.c
   l2tpv2_output.c
+  l2tpv2_encap_raw.c
   l2tpv2_session.c
 
   API_FILES
