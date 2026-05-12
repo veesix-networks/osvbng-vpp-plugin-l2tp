@@ -110,7 +110,7 @@ vnet_l2tpv2_add_del_session (
   tkv.value = ~0ULL;
 
   if (clib_bihash_search_inline_16_8 (&l2m->tunnel_table, &tkv) != 0)
-    return VNET_API_ERROR_NO_SUCH_TUNNEL;
+    return VNET_API_ERROR_NO_SUCH_ENTRY;
 
   tunnel_index = (u32) tkv.value;
   t = pool_elt_at_index (l2m->tunnels, tunnel_index);

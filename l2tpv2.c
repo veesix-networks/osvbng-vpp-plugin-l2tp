@@ -389,11 +389,13 @@ create_l2tpv2_session_command_fn (vlib_main_t *vm,
     case VNET_API_ERROR_TUNNEL_EXIST:
       error = clib_error_return (0, "session already exists");
       break;
-    case VNET_API_ERROR_NO_SUCH_TUNNEL:
-      error = clib_error_return (0, "owning tunnel does not exist");
-      break;
     case VNET_API_ERROR_NO_SUCH_ENTRY:
-      error = clib_error_return (0, "session does not exist");
+      /* Same code is returned for "owning tunnel missing" on add and
+       * "session not found" on delete; distinguish by `is_add`. */
+      if (is_add)
+	error = clib_error_return (0, "owning tunnel does not exist");
+      else
+	error = clib_error_return (0, "session does not exist");
       break;
     case VNET_API_ERROR_NO_SUCH_FIB:
       error = clib_error_return (0, "no such decap VRF");

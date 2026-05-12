@@ -67,9 +67,11 @@ vl_api_l2tpv2_add_del_session_t_handler (
   ip46_address_t local_ip, peer_ip;
   u32 sw_if_index = ~0;
   int rv = 0;
-  /* mp->raw_next_node_name is a null-terminated string per the api
-   * definition; use directly. */
-  const char *raw_name = (const char *) mp->raw_next_node_name.buf;
+  /* `string raw_next_node_name[64];` in the .api generates a bounded
+   * fixed-size u8[64] byte array (not a vl_api_string_t), so we cast
+   * the array directly — same pattern as upstream's l2tp plugin uses
+   * for `string interface_name[64]` in `l2tp_api.c`. */
+  const char *raw_name = (const char *) mp->raw_next_node_name;
 
   ip_address_decode (&mp->local_ip, &local_ip);
   ip_address_decode (&mp->peer_ip, &peer_ip);
