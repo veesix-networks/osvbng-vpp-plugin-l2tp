@@ -21,9 +21,11 @@
 
 #include <vlib/vlib.h>
 #include <vnet/vnet.h>
+#include <vnet/ethernet/ethernet.h>
 #include <vnet/ip/ip4_packet.h>
 #include <vnet/udp/udp_packet.h>
 #include <l2tpv2/l2tpv2.h>
+#include <osvbng_punt/osvbng_punt.h>
 
 #define PPP_PROTOCOL_IP4 0x0021
 #define PPP_PROTOCOL_IP6 0x0057
@@ -179,21 +181,43 @@ VLIB_NODE_FN (l2tpv2_input_node)
 
 	  if (s->decap_mode == L2TPV2_DECAP_IP)
 	    {
-	      vlib_buffer_advance (b0, l2tp_len + 2);
-	      vnet_buffer (b0)->sw_if_index[VLIB_RX] = s->sw_if_index;
 	      switch (ppp_proto)
 		{
 		case PPP_PROTOCOL_IP4:
+		  vlib_buffer_advance (b0, l2tp_len + 2);
+		  vnet_buffer (b0)->sw_if_index[VLIB_RX] = s->sw_if_index;
 		  next0 = L2TPV2_INPUT_NEXT_IP4_INPUT;
 		  pkts_decapsulated++;
 		  break;
 		case PPP_PROTOCOL_IP6:
+		  vlib_buffer_advance (b0, l2tp_len + 2);
+		  vnet_buffer (b0)->sw_if_index[VLIB_RX] = s->sw_if_index;
 		  next0 = L2TPV2_INPUT_NEXT_IP6_INPUT;
 		  pkts_decapsulated++;
 		  break;
 		default:
-		  error0 = L2TPV2_ERROR_UNKNOWN_PROTOCOL;
-		  pkts_unknown_proto++;
+		  /* Non-IP PPP (LCP, CHAP, IPCP, IPv6CP, Echo, ...) is
+		   * control plane work — punt the full L2 frame back to
+		   * userspace via the existing L2TP punt channel. Rewind
+		   * to the Ethernet header so the SHM consumer parses the
+		   * same datagram shape that the punt plugin produces for
+		   * control (T=1) messages. */
+		  {
+		    i16 rewind = sizeof (udp_header_t)
+				 + sizeof (ip4_header_t)
+				 + sizeof (ethernet_header_t);
+		    if (b0->flags & VNET_BUFFER_F_VLAN_2_DEEP)
+		      rewind += 2 * sizeof (ethernet_vlan_header_t);
+		    else if (b0->flags & VNET_BUFFER_F_VLAN_1_DEEP)
+		      rewind += sizeof (ethernet_vlan_header_t);
+		    vlib_buffer_advance (b0, -rewind);
+		    u32 rx_sw_if_index =
+		      vnet_buffer (b0)->sw_if_index[VLIB_RX];
+		    osvbng_punt_send_packet (vm, b0, rx_sw_if_index,
+					     OSVBNG_PUNT_PROTO_L2TP);
+		    next0 = L2TPV2_INPUT_NEXT_DROP;
+		    pkts_decapsulated++;
+		  }
 		  break;
 		}
 	    }
