@@ -129,12 +129,13 @@ VLIB_NODE_FN (l2tpv2_encap_raw_node)
 	  /* Make room for IP + UDP + L2TP headers. */
 	  u32 encap_len = sizeof (ip4_header_t) + sizeof (udp_header_t)
 			  + sizeof (l2tpv2_data_header_t);
-	  if (PREDICT_FALSE (vlib_buffer_advance (b0, -(i32) encap_len) < 0))
+	  if (PREDICT_FALSE (b0->current_data < (i16) encap_len))
 	    {
 	      error0 = L2TPV2_ERROR_TRUNCATED;
 	      pkts_dropped++;
 	      goto trace00;
 	    }
+	  vlib_buffer_advance (b0, -(i32) encap_len);
 
 	  ip4_header_t *ip = vlib_buffer_get_current (b0);
 	  udp_header_t *udp = (udp_header_t *) (ip + 1);
@@ -164,10 +165,8 @@ VLIB_NODE_FN (l2tpv2_encap_raw_node)
 	  l2tp->tunnel_id = clib_host_to_net_u16 (t->peer_tunnel_id);
 	  l2tp->session_id = clib_host_to_net_u16 (s->peer_session_id);
 
-	  /* Set RX sw_if_index to the encap interface if specified;
-	   * otherwise leave as-is so ip4-lookup uses the default FIB. */
-	  if (s->encap_fib_index != ~0u && t->encap_fib_index != ~0u)
-	    vnet_buffer (b0)->sw_if_index[VLIB_TX] = t->encap_fib_index;
+	  /* Use the tunnel's encap FIB for the ip4-lookup that follows. */
+	  vnet_buffer (b0)->sw_if_index[VLIB_TX] = t->encap_fib_index;
 
 	  next0 = L2TPV2_ENCAP_RAW_NEXT_IP4_LOOKUP;
 	  pkts_encap++;
