@@ -1,0 +1,146 @@
+/* Copyright 2026 The osvbng Authors
+ * Licensed under the GNU General Public License v3.0 or later.
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * L2TPv2 Plugin binapi.
+ *
+ * This plugin is a pure L2TPv2 (RFC 2661) dataplane. It has no knowledge
+ * of PPPoE, AAA, subscriber management, or any osvbng-specific concept.
+ * LAC bridging to PPPoE is implemented by composing decap_mode=raw with
+ * a downstream bridge node that lives in a separate plugin.
+ */
+
+option version = "1.0.0";
+import "vnet/interface_types.api";
+import "vnet/ip/ip_types.api";
+
+/** \brief Add or delete an L2TPv2 tunnel.
+    @param local_ip        - BNG-side endpoint address
+    @param peer_ip         - remote endpoint address
+    @param local_tunnel_id - ID we assigned (peer puts this on packets to us)
+    @param peer_tunnel_id  - ID peer assigned us (we put this on packets to peer)
+    @param local_udp_port  - local UDP port (1701 unless overridden)
+    @param peer_udp_port   - peer UDP port (1701 unless overridden)
+    @param df_bit          - set IP DF on egress (default false per RFC 2661 §4.4.5)
+*/
+define l2tpv2_add_del_tunnel
+{
+  u32 client_index;
+  u32 context;
+  bool is_add;
+  vl_api_address_t local_ip;
+  vl_api_address_t peer_ip;
+  u16 local_tunnel_id;
+  u16 peer_tunnel_id;
+  u16 local_udp_port;
+  u16 peer_udp_port;
+  bool df_bit;
+};
+
+define l2tpv2_add_del_tunnel_reply
+{
+  u32 context;
+  i32 retval;
+  u32 tunnel_index;
+};
+
+/** \brief Add or delete an L2TPv2 session.
+
+    Decap modes:
+      0 (DECAP_IP)  — strip L2TP+PPP, dispatch to ip4-input or ip6-input
+                       based on the PPP protocol field; RX sw_if_index is
+                       set to the session's per-session vnet interface so
+                       FIB lookup happens in the configured VRF.
+      1 (DECAP_RAW) — strip L2TP only; forward the raw PPP frame to a
+                       caller-specified graph node, with raw_opaque
+                       stashed in vnet_buffer2(b) for downstream
+                       correlation.
+
+    For DECAP_IP: decap_vrf_id and encap_if_index are required;
+    raw_next_node_name/raw_opaque are ignored.
+
+    For DECAP_RAW: raw_next_node_name and encap_if_index are required;
+    decap_vrf_id is ignored. raw_next_node_name is resolved to a graph
+    node index at session-add time; if the named node does not exist
+    the call returns VNET_API_ERROR_NO_SUCH_NODE.
+*/
+define l2tpv2_add_del_session
+{
+  u32 client_index;
+  u32 context;
+  bool is_add;
+  vl_api_address_t local_ip;
+  vl_api_address_t peer_ip;
+  u16 local_tunnel_id;
+  u16 local_session_id;
+  u16 peer_session_id;
+
+  u8 decap_mode;
+  string raw_next_node_name[64];
+  u32 raw_opaque;
+
+  u32 decap_vrf_id;
+  vl_api_interface_index_t encap_if_index;
+};
+
+define l2tpv2_add_del_session_reply
+{
+  u32 context;
+  i32 retval;
+  /* For DECAP_IP, the per-session vnet interface index. For DECAP_RAW,
+   * ~0 (no vnet interface is allocated). */
+  vl_api_interface_index_t sw_if_index;
+};
+
+/** \brief Dump configured tunnels. tunnel_index = ~0 to dump all. */
+define l2tpv2_tunnel_dump
+{
+  u32 client_index;
+  u32 context;
+  u32 tunnel_index;
+};
+
+define l2tpv2_tunnel_details
+{
+  u32 context;
+  u32 tunnel_index;
+  vl_api_address_t local_ip;
+  vl_api_address_t peer_ip;
+  u16 local_tunnel_id;
+  u16 peer_tunnel_id;
+  u16 local_udp_port;
+  u16 peer_udp_port;
+  bool df_bit;
+  u32 ref_count;
+};
+
+/** \brief Dump configured sessions. sw_if_index = ~0 to dump all. */
+define l2tpv2_session_dump
+{
+  u32 client_index;
+  u32 context;
+  vl_api_interface_index_t sw_if_index;
+};
+
+define l2tpv2_session_details
+{
+  u32 context;
+  vl_api_interface_index_t sw_if_index;
+  u32 tunnel_index;
+  vl_api_address_t local_ip;
+  vl_api_address_t peer_ip;
+  u16 local_tunnel_id;
+  u16 local_session_id;
+  u16 peer_session_id;
+  u8 decap_mode;
+  string raw_next_node_name[64];
+  u32 raw_opaque;
+  u32 decap_vrf_id;
+  vl_api_interface_index_t encap_if_index;
+};
+
+/*
+ * Local Variables:
+ * eval: (c-set-style "gnu")
+ * End:
+ */

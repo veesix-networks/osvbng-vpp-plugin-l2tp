@@ -1,0 +1,12 @@
+/* Copyright 2026 The osvbng Authors
+ * Licensed under the GNU General Public License v3.0 or later.
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+l2tpv2_error (DECAPSULATED, "good packets decapsulated")
+l2tpv2_error (NO_SUCH_SESSION, "no such l2tp session")
+l2tpv2_error (NO_SUCH_TUNNEL, "no such l2tp tunnel")
+l2tpv2_error (BAD_VER_FLAGS, "bad version/flags field")
+l2tpv2_error (CONTROL_PKT_AT_INPUT, "control packet at data input node")
+l2tpv2_error (TRUNCATED, "truncated l2tp packet")
+l2tpv2_error (UNKNOWN_PROTOCOL, "unknown l2tp protocol version")
