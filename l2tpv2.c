@@ -530,6 +530,18 @@ l2tpv2_init (vlib_main_t *vm)
   l2m->vnet_main = vnet_get_main ();
   l2m->punt_shm_tx_next_arc = ~0;
 
+  /* Resolve the osvbng-punt-shm-tx next-arc on the main thread now;
+   * vlib_node_add_next asserts thread-0. Cached for worker threads
+   * to dispatch T=1 control frames into the SHM service node. ~0
+   * means the punt plugin is not loaded and control frames drop. */
+  {
+    vlib_node_t *target = vlib_get_node_by_name (vm,
+						 (u8 *) "osvbng-punt-shm-tx");
+    if (target)
+      l2m->punt_shm_tx_next_arc =
+	vlib_node_add_next (vm, l2tpv2_input_node.index, target->index);
+  }
+
   clib_bihash_init_16_8 (&l2m->session_table, "l2tpv2 session table",
 			 L2TPV2_SESSION_NUM_BUCKETS,
 			 L2TPV2_SESSION_MEMORY_SIZE);

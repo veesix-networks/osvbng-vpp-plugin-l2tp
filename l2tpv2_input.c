@@ -38,17 +38,8 @@
 #define OSVBNG_PUNT_PROTO_L2TP_LOCAL  6
 #define vnet_buffer_punt_protocol(b)  ((b)->opaque2[1])
 
-static_always_inline void
-l2tpv2_input_resolve_punt_arc (vlib_main_t *vm, u32 this_node_index,
-			       l2tpv2_main_t *l2m)
-{
-  if (PREDICT_TRUE (l2m->punt_shm_tx_next_arc != ~0u))
-    return;
-  vlib_node_t *n = vlib_get_node_by_name (vm, (u8 *) "osvbng-punt-shm-tx");
-  if (n)
-    l2m->punt_shm_tx_next_arc =
-      vlib_node_add_next (vm, this_node_index, n->index);
-}
+/* l2m->punt_shm_tx_next_arc is resolved once on the main thread at
+ * plugin init (l2tpv2.c). vlib_node_add_next requires thread 0. */
 
 #define PPP_PROTOCOL_IP4 0x0021
 #define PPP_PROTOCOL_IP6 0x0057
@@ -115,10 +106,6 @@ VLIB_NODE_FN (l2tpv2_input_node)
   from = vlib_frame_vector_args (from_frame);
   n_left_from = from_frame->n_vectors;
   next_index = node->cached_next_index;
-
-  /* Resolve the osvbng-punt-shm-tx arc at first frame so the punt
-   * plugin is guaranteed to be loaded. Cheap to call repeatedly. */
-  l2tpv2_input_resolve_punt_arc (vm, l2tpv2_input_node.index, l2m);
 
   while (n_left_from > 0)
     {
