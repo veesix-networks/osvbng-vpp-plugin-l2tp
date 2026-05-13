@@ -250,6 +250,11 @@ typedef struct
   vnet_main_t *vnet_main;
   vlib_log_class_t log_class;
 
+  /* Next-arc into osvbng-punt-shm-tx for T=1 control frames and post-
+   * decap non-IP PPP frames. Resolved lazily on first use. ~0 means
+   * the punt plugin is not loaded — control frames fall back to drop. */
+  u32 punt_shm_tx_next_arc;
+
 } l2tpv2_main_t;
 
 extern l2tpv2_main_t l2tpv2_main;

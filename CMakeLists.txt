@@ -22,7 +22,7 @@ add_vpp_plugin(l2tpv2
   l2tpv2.api
 
   # Non-IP PPP frames decapsulated in DECAP_IP mode (LCP, CHAP, IPCP,
-  # IPv6CP, etc.) are punted to userspace via osvbng_punt's SHM.
-  LINK_LIBRARIES
-  osvbng_punt_plugin
+  # IPv6CP, etc.) are punted to userspace via the `osvbng-punt-shm-tx`
+  # graph node, resolved by name at first frame. No symbol-level
+  # dependency on osvbng_punt — plugins stay independently loadable.
 )

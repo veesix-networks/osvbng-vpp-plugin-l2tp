@@ -25,7 +25,30 @@
 #include <vnet/ip/ip4_packet.h>
 #include <vnet/udp/udp_packet.h>
 #include <l2tpv2/l2tpv2.h>
-#include <osvbng_punt/osvbng_punt.h>
+
+/* osvbng_punt protocol enum value for L2TP punt. Inlined here rather
+ * than including <osvbng_punt/osvbng_punt.h> to keep this plugin free
+ * of any cross-plugin header / link dependency — l2tpv2 reaches punt
+ * only through the named graph-node arc `osvbng-punt-shm-tx`. The
+ * enum value must stay in sync with osvbng_punt_protocol_t in the
+ * punt plugin's header (kept stable by code review).
+ *
+ * Slot for the protocol on the buffer matches osvbng_punt.h:
+ *   vnet_buffer_punt_protocol(b) := (b)->opaque2[1] */
+#define OSVBNG_PUNT_PROTO_L2TP_LOCAL  6
+#define vnet_buffer_punt_protocol(b)  ((b)->opaque2[1])
+
+static_always_inline void
+l2tpv2_input_resolve_punt_arc (vlib_main_t *vm, u32 this_node_index,
+			       l2tpv2_main_t *l2m)
+{
+  if (PREDICT_TRUE (l2m->punt_shm_tx_next_arc != ~0u))
+    return;
+  vlib_node_t *n = vlib_get_node_by_name (vm, (u8 *) "osvbng-punt-shm-tx");
+  if (n)
+    l2m->punt_shm_tx_next_arc =
+      vlib_node_add_next (vm, this_node_index, n->index);
+}
 
 #define PPP_PROTOCOL_IP4 0x0021
 #define PPP_PROTOCOL_IP6 0x0057
@@ -92,6 +115,10 @@ VLIB_NODE_FN (l2tpv2_input_node)
   from = vlib_frame_vector_args (from_frame);
   n_left_from = from_frame->n_vectors;
   next_index = node->cached_next_index;
+
+  /* Resolve the osvbng-punt-shm-tx arc at first frame so the punt
+   * plugin is guaranteed to be loaded. Cheap to call repeatedly. */
+  l2tpv2_input_resolve_punt_arc (vm, l2tpv2_input_node.index, l2m);
 
   while (n_left_from > 0)
     {
@@ -211,11 +238,20 @@ VLIB_NODE_FN (l2tpv2_input_node)
 		    else if (b0->flags & VNET_BUFFER_F_VLAN_1_DEEP)
 		      rewind += sizeof (ethernet_vlan_header_t);
 		    vlib_buffer_advance (b0, -rewind);
-		    u32 rx_sw_if_index =
-		      vnet_buffer (b0)->sw_if_index[VLIB_RX];
-		    osvbng_punt_send_packet (vm, b0, rx_sw_if_index,
-					     OSVBNG_PUNT_PROTO_L2TP);
-		    next0 = L2TPV2_INPUT_NEXT_DROP;
+
+		    /* Hand off to the punt plugin's shared SHM service via
+		     * its public graph node. No cross-plugin function call;
+		     * arc resolved by name at first frame. */
+		    if (PREDICT_FALSE (l2m->punt_shm_tx_next_arc == ~0u))
+		      {
+			next0 = L2TPV2_INPUT_NEXT_DROP;
+		      }
+		    else
+		      {
+			vnet_buffer_punt_protocol (b0) =
+			  OSVBNG_PUNT_PROTO_L2TP_LOCAL;
+			next0 = l2m->punt_shm_tx_next_arc;
+		      }
 		    pkts_decapsulated++;
 		  }
 		  break;

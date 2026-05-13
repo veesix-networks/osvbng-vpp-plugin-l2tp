@@ -528,6 +528,7 @@ l2tpv2_init (vlib_main_t *vm)
 
   l2m->vlib_main = vm;
   l2m->vnet_main = vnet_get_main ();
+  l2m->punt_shm_tx_next_arc = ~0;
 
   clib_bihash_init_16_8 (&l2m->session_table, "l2tpv2 session table",
 			 L2TPV2_SESSION_NUM_BUCKETS,
