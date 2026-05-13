@@ -26,6 +26,7 @@
 #include <vpp/app/version.h>
 #include <vnet/adj/adj_midchain.h>
 #include <vnet/adj/adj_mcast.h>
+#include <vnet/udp/udp.h>
 
 #include <l2tpv2/l2tpv2.h>
 
@@ -548,6 +549,13 @@ l2tpv2_init (vlib_main_t *vm)
   clib_bihash_init_16_8 (&l2m->tunnel_table, "l2tpv2 tunnel table",
 			 L2TPV2_TUNNEL_NUM_BUCKETS,
 			 L2TPV2_TUNNEL_MEMORY_SIZE);
+
+  /* Claim UDP/1701 in the IPv4 input path. Without this, L2TP packets
+   * fall through to ip4-punt-redirect → the linux-cp tap, never
+   * reaching this plugin. Mirrors the upstream l2tpv3 plugin's
+   * ip6_register_protocol(IP_PROTOCOL_L2TP, ...) pattern. */
+  udp_register_dst_port (vm, L2TPV2_UDP_PORT, l2tpv2_input_node.index,
+			 1 /* is_ip4 */);
 
   vlib_log_notice (l2m->log_class, "initialized successfully");
   return 0;

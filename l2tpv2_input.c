@@ -142,7 +142,28 @@ VLIB_NODE_FN (l2tpv2_input_node)
 
 	  if (PREDICT_FALSE (hdr[0] & L2TP_FLAG_BYTE_T))
 	    {
-	      error0 = L2TPV2_ERROR_CONTROL_PKT_AT_INPUT;
+	      /* Control packet (T=1): SCCRQ/SCCRP/SCCCN/ICRQ/ICRP/ICCN/
+	       * StopCCN/HELLO/ZLB. Punt the full Ethernet frame to the
+	       * Go control plane via the SHM service. Mirrors the
+	       * non-IP-PPP punt path below — same proto tag, same rewind. */
+	      i16 rewind = sizeof (udp_header_t)
+			   + sizeof (ip4_header_t)
+			   + sizeof (ethernet_header_t);
+	      if (b0->flags & VNET_BUFFER_F_VLAN_2_DEEP)
+		rewind += 2 * sizeof (ethernet_vlan_header_t);
+	      else if (b0->flags & VNET_BUFFER_F_VLAN_1_DEEP)
+		rewind += sizeof (ethernet_vlan_header_t);
+	      vlib_buffer_advance (b0, -rewind);
+
+	      if (PREDICT_FALSE (l2m->punt_shm_tx_next_arc == ~0u))
+		{
+		  next0 = L2TPV2_INPUT_NEXT_DROP;
+		}
+	      else
+		{
+		  vnet_buffer_punt_protocol (b0) = OSVBNG_PUNT_PROTO_L2TP_LOCAL;
+		  next0 = l2m->punt_shm_tx_next_arc;
+		}
 	      goto trace00;
 	    }
 
