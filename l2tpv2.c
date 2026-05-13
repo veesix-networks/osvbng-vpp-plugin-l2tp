@@ -90,7 +90,7 @@ l2tpv2_interface_admin_up_down (vnet_main_t *vnm, u32 hw_if_index, u32 flags)
   return 0;
 }
 
-VNET_DEVICE_CLASS (l2tpv2_device_class, static) = {
+VNET_DEVICE_CLASS (l2tpv2_device_class) = {
   .name = "L2TPv2",
   .format_device_name = format_l2tpv2_if_name,
   .admin_up_down_function = l2tpv2_interface_admin_up_down,
