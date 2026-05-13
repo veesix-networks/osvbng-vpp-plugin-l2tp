@@ -126,15 +126,20 @@ VLIB_NODE_FN (l2tpv2_encap_raw_node)
 	  l2tpv2_tunnel_t *t =
 	    pool_elt_at_index (l2m->tunnels, s->tunnel_index);
 
-	  /* Make room for IP + UDP + L2TP headers. The buffer has
-	   * VLIB_BUFFER_PRE_DATA_SIZE bytes of pre-data headroom before
-	   * b->data; current_data can go as low as
-	   * -VLIB_BUFFER_PRE_DATA_SIZE. The previous check
-	   * `current_data < encap_len` was wrong — it required the encap
-	   * to fit in pre-current_data space, but the correct constraint
-	   * is that the prepended encap fits in the pre-data headroom. */
+	  /* Make room for IP + UDP + L2TP-data + PPP HDLC Address/Control
+	   * headers. RFC 1661 §6.6 default: Address (0xff) and Control
+	   * (0x03) MUST be sent unless ACFC was negotiated via LCP. In
+	   * LAC mode we proxy LCP, so we don't track the ACFC state
+	   * between subscriber and LNS — sending Address+Control by
+	   * default matches every major LNS (bngblaster, accel-ppp,
+	   * Cisco, Nokia, RTBrick) and the PPP default.
+	   *
+	   * The buffer has VLIB_BUFFER_PRE_DATA_SIZE bytes of pre-data
+	   * headroom before b->data; current_data can go as low as
+	   * -VLIB_BUFFER_PRE_DATA_SIZE. */
 	  u32 encap_len = sizeof (ip4_header_t) + sizeof (udp_header_t)
-			  + sizeof (l2tpv2_data_header_t);
+			  + sizeof (l2tpv2_data_header_t)
+			  + 2 /* PPP Address(0xff) + Control(0x03) */;
 	  if (PREDICT_FALSE ((i32) b0->current_data - (i32) encap_len
 			     < -(i32) VLIB_BUFFER_PRE_DATA_SIZE))
 	    {
@@ -147,6 +152,9 @@ VLIB_NODE_FN (l2tpv2_encap_raw_node)
 	  ip4_header_t *ip = vlib_buffer_get_current (b0);
 	  udp_header_t *udp = (udp_header_t *) (ip + 1);
 	  l2tpv2_data_header_t *l2tp = (l2tpv2_data_header_t *) (udp + 1);
+	  u8 *ppp_ac = (u8 *) (l2tp + 1);
+	  ppp_ac[0] = 0xff; /* PPP HDLC Address */
+	  ppp_ac[1] = 0x03; /* PPP HDLC Control (UI) */
 	  u16 packet_len = vlib_buffer_length_in_chain (vm, b0);
 
 	  ip->ip_version_and_header_length = 0x45;
