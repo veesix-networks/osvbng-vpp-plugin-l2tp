@@ -126,10 +126,17 @@ VLIB_NODE_FN (l2tpv2_encap_raw_node)
 	  l2tpv2_tunnel_t *t =
 	    pool_elt_at_index (l2m->tunnels, s->tunnel_index);
 
-	  /* Make room for IP + UDP + L2TP headers. */
+	  /* Make room for IP + UDP + L2TP headers. The buffer has
+	   * VLIB_BUFFER_PRE_DATA_SIZE bytes of pre-data headroom before
+	   * b->data; current_data can go as low as
+	   * -VLIB_BUFFER_PRE_DATA_SIZE. The previous check
+	   * `current_data < encap_len` was wrong — it required the encap
+	   * to fit in pre-current_data space, but the correct constraint
+	   * is that the prepended encap fits in the pre-data headroom. */
 	  u32 encap_len = sizeof (ip4_header_t) + sizeof (udp_header_t)
 			  + sizeof (l2tpv2_data_header_t);
-	  if (PREDICT_FALSE (b0->current_data < (i16) encap_len))
+	  if (PREDICT_FALSE ((i32) b0->current_data - (i32) encap_len
+			     < -(i32) VLIB_BUFFER_PRE_DATA_SIZE))
 	    {
 	      error0 = L2TPV2_ERROR_TRUNCATED;
 	      pkts_dropped++;
