@@ -269,13 +269,16 @@ VLIB_NODE_FN (l2tpv2_input_node)
 	    {
 	      vlib_buffer_advance (b0, l2tp_len);
 	      vnet_buffer_l2tpv2_opaque (b0) = s->raw_opaque;
-	      if (PREDICT_FALSE (s->raw_next_node_index == ~0u))
+	      if (PREDICT_FALSE (s->raw_next_arc == ~0u))
 		{
 		  error0 = L2TPV2_ERROR_NO_SUCH_SESSION;
 		  goto trace00;
 		}
-	      next0 = vlib_node_add_next (vm, l2tpv2_input_node.index,
-					  s->raw_next_node_index);
+	      /* Use the pre-resolved arc from session-create. Calling
+	       * vlib_node_add_next from the data path is a thread-safety
+	       * violation (it mutates node graph and asserts off main
+	       * thread). */
+	      next0 = s->raw_next_arc;
 	      pkts_decapsulated++;
 	    }
 

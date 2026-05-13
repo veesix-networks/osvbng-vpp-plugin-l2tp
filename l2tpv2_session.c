@@ -137,6 +137,7 @@ vnet_l2tpv2_add_del_session (
       s->decap_mode = a->decap_mode;
       s->encap_if_index = a->encap_if_index;
       s->raw_next_node_index = ~0;
+      s->raw_next_arc = ~0;
       s->raw_opaque = 0;
       s->sw_if_index = ~0;
       s->hw_if_index = ~0;
@@ -158,6 +159,12 @@ vnet_l2tpv2_add_del_session (
 	      return VNET_API_ERROR_NO_SUCH_NODE;
 	    }
 	  s->raw_next_node_index = next_node->index;
+	  /* Resolve the next-arc on the main thread (binapi runs here).
+	   * vlib_node_add_next mutates node graph state and asserts off
+	   * the main thread, so it cannot be called from the data path. */
+	  s->raw_next_arc = vlib_node_add_next (l2m->vlib_main,
+						l2tpv2_input_node.index,
+						next_node->index);
 	  s->raw_opaque = a->raw_opaque;
 	}
       else if (a->decap_mode == L2TPV2_DECAP_IP)

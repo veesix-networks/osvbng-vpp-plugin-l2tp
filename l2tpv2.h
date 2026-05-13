@@ -143,6 +143,12 @@ typedef struct
   /* DECAP_RAW: graph node index for raw PPP frame delivery. ~0 in IP mode. */
   u32 raw_next_node_index;
 
+  /* DECAP_RAW: pre-resolved next-arc index from l2tpv2-input ->
+   * raw_next_node_index. vlib_node_add_next() must run on the main
+   * thread (it mutates the node graph); we resolve once at
+   * session-create time and the data path reads this cached slot. */
+  u32 raw_next_arc;
+
   /* DECAP_RAW: opaque u32 stashed in vnet_buffer2(b) for downstream
    * correlation (e.g. the partner PPPoE session sw_if_index). 0 in IP mode. */
   u32 raw_opaque;
