@@ -213,8 +213,17 @@ vnet_l2tpv2_add_del_session (
 
       t->ref_count++;
 
+      /* For DECAP_IP the reply carries the per-session vnet sw_if_index
+       * (consumers bind it for FIB / counters). For DECAP_RAW there is
+       * no vnet interface, but the consumer (osvbng PPPoE LAC bridge)
+       * needs the L2TPv2 session pool index to stash as the buffer
+       * opaque on the subscriber→LNS path — l2tpv2-encap-raw reads it
+       * back as `session_index`. Overload the reply field with that
+       * pool index in RAW mode. */
       if (sw_if_indexp)
-	*sw_if_indexp = sw_if_index;
+	*sw_if_indexp = (a->decap_mode == L2TPV2_DECAP_RAW)
+			  ? (u32) (s - l2m->sessions)
+			  : sw_if_index;
       return 0;
     }
 
