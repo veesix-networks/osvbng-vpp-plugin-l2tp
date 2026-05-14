@@ -9,6 +9,7 @@
 #include <vnet/api_errno.h>
 #include <vnet/fib/fib_table.h>
 #include <vnet/interface.h>
+#include <vnet/interface_funcs.h>
 #include <l2tpv2/l2tpv2.h>
 
 extern u8 *l2tpv2_build_rewrite (vnet_main_t *vnm, u32 sw_if_index,
@@ -226,6 +227,14 @@ vnet_l2tpv2_add_del_session (
 	  si->flags &= ~VNET_SW_INTERFACE_FLAG_HIDDEN;
 	  vnet_sw_interface_set_flags (vnm, sw_if_index,
 				       VNET_SW_INTERFACE_FLAG_ADMIN_UP);
+	  /* Egress packets resolved via this per-session interface go
+	   * through the midchain rewrite (built in l2tpv2_update_adj),
+	   * then tunnel-output dispatches into the underlying interface
+	   * chain. Without this, VPP has no L3 output node for the
+	   * synthetic interface and packets land in local0-output and
+	   * drop. */
+	  vnet_set_interface_l3_output_node (vnm->vlib_main, sw_if_index,
+					     (u8 *) "tunnel-output");
 	}
       else
 	{
@@ -270,6 +279,7 @@ vnet_l2tpv2_add_del_session (
 					  s->delegated_prefix_len,
 					  &s->pd_next_hop, 0);
 
+      vnet_reset_interface_l3_output_node (vnm->vlib_main, s->sw_if_index);
       vnet_sw_interface_set_flags (vnm, s->sw_if_index, 0 /* down */);
       vnet_sw_interface_t *si = vnet_get_sw_interface (vnm, s->sw_if_index);
       si->flags |= VNET_SW_INTERFACE_FLAG_HIDDEN;
