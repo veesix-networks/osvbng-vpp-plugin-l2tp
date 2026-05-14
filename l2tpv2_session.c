@@ -87,6 +87,16 @@ l2tpv2_resolve_decap_fib (u32 decap_vrf_id, u32 *fib_index_out)
   return 0;
 }
 
+static int
+l2tpv2_resolve_decap_fib_ip6 (u32 decap_vrf_id, u32 *fib_index_out)
+{
+  u32 fib_index = fib_table_find (FIB_PROTOCOL_IP6, decap_vrf_id);
+  if (fib_index == ~0)
+    return VNET_API_ERROR_NO_SUCH_FIB;
+  *fib_index_out = fib_index;
+  return 0;
+}
+
 int
 vnet_l2tpv2_add_del_session (
   vnet_l2tpv2_add_del_session_args_t *a, u32 *sw_if_indexp)
@@ -176,6 +186,13 @@ vnet_l2tpv2_add_del_session (
 	      pool_put (l2m->sessions, s);
 	      return rv;
 	    }
+	  rv = l2tpv2_resolve_decap_fib_ip6 (a->decap_vrf_id,
+					     &s->decap_fib_index_ip6);
+	  if (rv != 0)
+	    {
+	      pool_put (l2m->sessions, s);
+	      return rv;
+	    }
 
 	  /* Register a per-session vnet interface so FIB / counters work. */
 	  if (vec_len (l2m->free_session_hw_if_indices) > 0)
@@ -243,6 +260,15 @@ vnet_l2tpv2_add_del_session (
 
   if (s->decap_mode == L2TPV2_DECAP_IP && s->sw_if_index != ~0)
     {
+      if (s->ipv4_bound)
+	vnet_l2tpv2_set_session_ipv4 (s->sw_if_index, &s->client_ipv4, 0);
+      if (s->ipv6_bound)
+	vnet_l2tpv2_set_session_ipv6 (s->sw_if_index, &s->client_ipv6, 0);
+      if (s->delegated_prefix_len)
+	vnet_l2tpv2_set_delegated_prefix (s->sw_if_index, &s->delegated_prefix,
+					  s->delegated_prefix_len,
+					  &s->pd_next_hop, 0);
+
       vnet_sw_interface_set_flags (vnm, s->sw_if_index, 0 /* down */);
       vnet_sw_interface_t *si = vnet_get_sw_interface (vnm, s->sw_if_index);
       si->flags |= VNET_SW_INTERFACE_FLAG_HIDDEN;
@@ -260,5 +286,167 @@ vnet_l2tpv2_add_del_session (
 
   if (sw_if_indexp)
     *sw_if_indexp = sw_if_index;
+  return 0;
+}
+
+static l2tpv2_session_t *
+l2tpv2_session_by_sw_if_index (u32 sw_if_index)
+{
+  l2tpv2_main_t *l2m = &l2tpv2_main;
+  if (sw_if_index >= vec_len (l2m->session_index_by_sw_if_index))
+    return 0;
+  u32 idx = l2m->session_index_by_sw_if_index[sw_if_index];
+  if (idx == ~0)
+    return 0;
+  return pool_elt_at_index (l2m->sessions, idx);
+}
+
+int
+vnet_l2tpv2_set_session_ipv4 (u32 sw_if_index, ip4_address_t *addr, u8 is_add)
+{
+  l2tpv2_session_t *s = l2tpv2_session_by_sw_if_index (sw_if_index);
+  if (s == 0)
+    return VNET_API_ERROR_INVALID_SW_IF_INDEX;
+  if (s->decap_mode != L2TPV2_DECAP_IP)
+    return VNET_API_ERROR_INVALID_VALUE;
+
+  fib_prefix_t pfx;
+  clib_memset (&pfx, 0, sizeof (pfx));
+  pfx.fp_proto = FIB_PROTOCOL_IP4;
+  pfx.fp_len = 32;
+  pfx.fp_addr.ip4 = *addr;
+
+  if (is_add)
+    {
+      if (s->ipv4_bound
+	  && !clib_memcmp (&s->client_ipv4, addr, sizeof (ip4_address_t)))
+	return 0;
+      if (s->ipv4_bound)
+	vnet_l2tpv2_set_session_ipv4 (sw_if_index, &s->client_ipv4, 0);
+
+      fib_table_entry_path_add (s->decap_fib_index, &pfx, l2tpv2_fib_src,
+				FIB_ENTRY_FLAG_NONE, DPO_PROTO_IP4, NULL,
+				sw_if_index, ~0, 1, NULL,
+				FIB_ROUTE_PATH_FLAG_NONE);
+
+      s->client_ipv4 = *addr;
+      s->ipv4_bound = 1;
+    }
+  else
+    {
+      if (!s->ipv4_bound)
+	return 0;
+
+      fib_table_entry_path_remove (s->decap_fib_index, &pfx, l2tpv2_fib_src,
+				   DPO_PROTO_IP4, NULL, sw_if_index, ~0, 1,
+				   FIB_ROUTE_PATH_FLAG_NONE);
+
+      clib_memset (&s->client_ipv4, 0, sizeof (s->client_ipv4));
+      s->ipv4_bound = 0;
+    }
+
+  return 0;
+}
+
+int
+vnet_l2tpv2_set_session_ipv6 (u32 sw_if_index, ip6_address_t *addr, u8 is_add)
+{
+  l2tpv2_session_t *s = l2tpv2_session_by_sw_if_index (sw_if_index);
+  if (s == 0)
+    return VNET_API_ERROR_INVALID_SW_IF_INDEX;
+  if (s->decap_mode != L2TPV2_DECAP_IP)
+    return VNET_API_ERROR_INVALID_VALUE;
+
+  fib_prefix_t pfx;
+  clib_memset (&pfx, 0, sizeof (pfx));
+  pfx.fp_proto = FIB_PROTOCOL_IP6;
+  pfx.fp_len = 128;
+  pfx.fp_addr.ip6 = *addr;
+
+  if (is_add)
+    {
+      if (s->ipv6_bound
+	  && !clib_memcmp (&s->client_ipv6, addr, sizeof (ip6_address_t)))
+	return 0;
+      if (s->ipv6_bound)
+	vnet_l2tpv2_set_session_ipv6 (sw_if_index, &s->client_ipv6, 0);
+
+      fib_table_entry_path_add (s->decap_fib_index_ip6, &pfx, l2tpv2_fib_src,
+				FIB_ENTRY_FLAG_NONE, DPO_PROTO_IP6, NULL,
+				sw_if_index, ~0, 1, NULL,
+				FIB_ROUTE_PATH_FLAG_NONE);
+
+      s->client_ipv6 = *addr;
+      s->ipv6_bound = 1;
+    }
+  else
+    {
+      if (!s->ipv6_bound)
+	return 0;
+
+      fib_table_entry_path_remove (s->decap_fib_index_ip6, &pfx,
+				   l2tpv2_fib_src, DPO_PROTO_IP6, NULL,
+				   sw_if_index, ~0, 1,
+				   FIB_ROUTE_PATH_FLAG_NONE);
+
+      clib_memset (&s->client_ipv6, 0, sizeof (s->client_ipv6));
+      s->ipv6_bound = 0;
+    }
+
+  return 0;
+}
+
+int
+vnet_l2tpv2_set_delegated_prefix (u32 sw_if_index, ip6_address_t *prefix,
+				  u8 prefix_len, ip6_address_t *next_hop,
+				  u8 is_add)
+{
+  l2tpv2_session_t *s = l2tpv2_session_by_sw_if_index (sw_if_index);
+  if (s == 0)
+    return VNET_API_ERROR_INVALID_SW_IF_INDEX;
+  if (s->decap_mode != L2TPV2_DECAP_IP)
+    return VNET_API_ERROR_INVALID_VALUE;
+
+  fib_prefix_t pfx;
+  clib_memset (&pfx, 0, sizeof (pfx));
+  pfx.fp_proto = FIB_PROTOCOL_IP6;
+  pfx.fp_len = prefix_len;
+  pfx.fp_addr.ip6 = *prefix;
+
+  if (is_add)
+    {
+      if (s->delegated_prefix_len == prefix_len
+	  && !clib_memcmp (&s->delegated_prefix, prefix,
+			   sizeof (ip6_address_t)))
+	return 0;
+      if (s->delegated_prefix_len)
+	vnet_l2tpv2_set_delegated_prefix (sw_if_index, &s->delegated_prefix,
+					  s->delegated_prefix_len,
+					  &s->pd_next_hop, 0);
+
+      fib_table_entry_path_add (s->decap_fib_index_ip6, &pfx, l2tpv2_fib_src,
+				FIB_ENTRY_FLAG_NONE, DPO_PROTO_IP6, NULL,
+				sw_if_index, ~0, 1, NULL,
+				FIB_ROUTE_PATH_FLAG_NONE);
+
+      s->delegated_prefix = *prefix;
+      s->delegated_prefix_len = prefix_len;
+      s->pd_next_hop = *next_hop;
+    }
+  else
+    {
+      if (s->delegated_prefix_len == 0)
+	return 0;
+
+      fib_table_entry_path_remove (s->decap_fib_index_ip6, &pfx,
+				   l2tpv2_fib_src, DPO_PROTO_IP6, NULL,
+				   sw_if_index, ~0, 1,
+				   FIB_ROUTE_PATH_FLAG_NONE);
+
+      clib_memset (&s->delegated_prefix, 0, sizeof (s->delegated_prefix));
+      s->delegated_prefix_len = 0;
+      clib_memset (&s->pd_next_hop, 0, sizeof (s->pd_next_hop));
+    }
+
   return 0;
 }

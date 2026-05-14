@@ -161,9 +161,26 @@ typedef struct
   /* DECAP_IP: FIB index for decapsulated traffic (resolved from VRF id
    * at session creation). 0 in raw mode. */
   u32 decap_fib_index;
+  u32 decap_fib_index_ip6;
 
   /* TX interface for outbound L2TP encap packets. */
   u32 encap_if_index;
+
+  /* Subscriber IPv4 bound on this session's per-session vnet interface.
+   * DECAP_IP only. Tracked here so session-delete can run the unbind
+   * before the per-session interface is torn down. */
+  ip4_address_t client_ipv4;
+  u8 ipv4_bound;
+
+  /* Subscriber IPv6 (IA_NA) bound on this session. DECAP_IP only. */
+  ip6_address_t client_ipv6;
+  u8 ipv6_bound;
+
+  /* Delegated prefix routed to this session, with next-hop used for
+   * the FIB path. DECAP_IP only. */
+  ip6_address_t delegated_prefix;
+  u8 delegated_prefix_len;
+  ip6_address_t pd_next_hop;
 
 } l2tpv2_session_t;
 
@@ -267,6 +284,10 @@ extern l2tpv2_main_t l2tpv2_main;
 
 extern vlib_node_registration_t l2tpv2_input_node;
 
+/* FIB source used for subscriber routes on per-session DECAP_IP
+ * interfaces. Allocated at plugin init in l2tpv2.c. */
+extern fib_source_t l2tpv2_fib_src;
+
 /* Tunnel add/del */
 typedef struct
 {
@@ -307,6 +328,19 @@ typedef struct
 
 int vnet_l2tpv2_add_del_session (
   vnet_l2tpv2_add_del_session_args_t *a, u32 *sw_if_indexp);
+
+/* Subscriber-side FIB binding on a DECAP_IP session. The plugin owns
+ * the route lifecycle: routes get installed when is_add=1, removed
+ * when is_add=0, and any leftover bindings are auto-cleaned on
+ * session-delete so FIB entries never outlive the per-session vnet
+ * interface. */
+int vnet_l2tpv2_set_session_ipv4 (u32 sw_if_index, ip4_address_t *addr,
+				  u8 is_add);
+int vnet_l2tpv2_set_session_ipv6 (u32 sw_if_index, ip6_address_t *addr,
+				  u8 is_add);
+int vnet_l2tpv2_set_delegated_prefix (u32 sw_if_index, ip6_address_t *prefix,
+				      u8 prefix_len, ip6_address_t *next_hop,
+				      u8 is_add);
 
 /* Cross-plugin buffer opaque used by L2TPv2's DECAP_RAW mode and by
  * upstream nodes (e.g. a PPPoE LAC bridge) that hand PPP frames into

@@ -227,6 +227,56 @@ vl_api_l2tpv2_session_dump_t_handler (
     }
 }
 
+static void
+vl_api_l2tpv2_set_session_ipv4_t_handler (
+  vl_api_l2tpv2_set_session_ipv4_t *mp)
+{
+  vl_api_l2tpv2_set_session_ipv4_reply_t *rmp;
+  l2tpv2_main_t *l2m = &l2tpv2_main;
+  ip4_address_t addr;
+  int rv;
+
+  clib_memcpy (&addr, mp->client_ip, sizeof (addr));
+  rv = vnet_l2tpv2_set_session_ipv4 (ntohl (mp->sw_if_index), &addr,
+				     mp->is_add);
+
+  REPLY_MACRO (VL_API_L2TPV2_SET_SESSION_IPV4_REPLY);
+}
+
+static void
+vl_api_l2tpv2_set_session_ipv6_t_handler (
+  vl_api_l2tpv2_set_session_ipv6_t *mp)
+{
+  vl_api_l2tpv2_set_session_ipv6_reply_t *rmp;
+  l2tpv2_main_t *l2m = &l2tpv2_main;
+  ip6_address_t addr;
+  int rv;
+
+  clib_memcpy (&addr, mp->client_ip, sizeof (addr));
+  rv = vnet_l2tpv2_set_session_ipv6 (ntohl (mp->sw_if_index), &addr,
+				     mp->is_add);
+
+  REPLY_MACRO (VL_API_L2TPV2_SET_SESSION_IPV6_REPLY);
+}
+
+static void
+vl_api_l2tpv2_set_delegated_prefix_t_handler (
+  vl_api_l2tpv2_set_delegated_prefix_t *mp)
+{
+  vl_api_l2tpv2_set_delegated_prefix_reply_t *rmp;
+  l2tpv2_main_t *l2m = &l2tpv2_main;
+  ip6_address_t prefix, next_hop;
+  int rv;
+
+  clib_memcpy (&prefix, &mp->prefix.address.un.ip6, sizeof (prefix));
+  clib_memcpy (&next_hop, mp->next_hop, sizeof (next_hop));
+  rv = vnet_l2tpv2_set_delegated_prefix (ntohl (mp->sw_if_index), &prefix,
+					 mp->prefix.len, &next_hop,
+					 mp->is_add);
+
+  REPLY_MACRO (VL_API_L2TPV2_SET_DELEGATED_PREFIX_REPLY);
+}
+
 #include <l2tpv2/l2tpv2.api.c>
 
 static clib_error_t *

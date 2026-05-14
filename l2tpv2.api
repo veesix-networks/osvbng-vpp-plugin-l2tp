@@ -139,6 +139,55 @@ define l2tpv2_session_details
   vl_api_interface_index_t encap_if_index;
 };
 
+/** \brief Set or clear the subscriber IPv4 binding on a DECAP_IP session. */
+define l2tpv2_set_session_ipv4
+{
+  u32 client_index;
+  u32 context;
+  vl_api_interface_index_t sw_if_index;
+  vl_api_ip4_address_t client_ip;
+  bool is_add;
+};
+
+define l2tpv2_set_session_ipv4_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Set or clear the subscriber IPv6 (IA_NA) binding on a DECAP_IP session. */
+define l2tpv2_set_session_ipv6
+{
+  u32 client_index;
+  u32 context;
+  vl_api_interface_index_t sw_if_index;
+  vl_api_ip6_address_t client_ip;
+  bool is_add;
+};
+
+define l2tpv2_set_session_ipv6_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Set or clear a delegated prefix on a DECAP_IP session. */
+define l2tpv2_set_delegated_prefix
+{
+  u32 client_index;
+  u32 context;
+  vl_api_interface_index_t sw_if_index;
+  vl_api_prefix_t prefix;
+  vl_api_ip6_address_t next_hop;
+  bool is_add;
+};
+
+define l2tpv2_set_delegated_prefix_reply
+{
+  u32 context;
+  i32 retval;
+};
+
 /*
  * Local Variables:
  * eval: (c-set-style "gnu")

@@ -28,6 +28,12 @@
 #include <vnet/adj/adj_mcast.h>
 #include <vnet/udp/udp.h>
 
+/* FIB source for subscriber routes installed on per-session DECAP_IP
+ * interfaces. Allocated once at plugin init; consumed by the
+ * vnet_l2tpv2_set_session_* family so the FIB back-walks our entries
+ * when interfaces go away. */
+fib_source_t l2tpv2_fib_src;
+
 #include <l2tpv2/l2tpv2.h>
 
 #include <vppinfra/hash.h>
@@ -530,6 +536,10 @@ l2tpv2_init (vlib_main_t *vm)
   l2m->vlib_main = vm;
   l2m->vnet_main = vnet_get_main ();
   l2m->punt_shm_tx_next_arc = ~0;
+
+  l2tpv2_fib_src = fib_source_allocate ("l2tpv2",
+					FIB_SOURCE_PRIORITY_HI,
+					FIB_SOURCE_BH_API);
 
   /* Resolve the osvbng-punt-shm-tx next-arc on the main thread now;
    * vlib_node_add_next asserts thread-0. Cached for worker threads
