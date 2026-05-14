@@ -212,20 +212,29 @@ VLIB_NODE_FN (l2tpv2_input_node)
 	  l2tpv2_session_t *s =
 	    pool_elt_at_index (l2m->sessions, session_index);
 
-	  ppp_proto = clib_net_to_host_u16 (*(u16 *) (hdr + l2tp_len));
+	  /* RFC 1662 §3.1: senders MAY include the HDLC Address+Control
+	   * (0xff 0x03) bytes even when ACFC is in effect; receivers MUST
+	   * accept frames with or without them. xl2tpd's pppd includes
+	   * them by default. Skip them before reading the PPP protocol
+	   * field. */
+	  u32 ppp_off = l2tp_len;
+	  if (b0->current_length >= ppp_off + 2
+	      && hdr[ppp_off] == 0xff && hdr[ppp_off + 1] == 0x03)
+	    ppp_off += 2;
+	  ppp_proto = clib_net_to_host_u16 (*(u16 *) (hdr + ppp_off));
 
 	  if (s->decap_mode == L2TPV2_DECAP_IP)
 	    {
 	      switch (ppp_proto)
 		{
 		case PPP_PROTOCOL_IP4:
-		  vlib_buffer_advance (b0, l2tp_len + 2);
+		  vlib_buffer_advance (b0, ppp_off + 2);
 		  vnet_buffer (b0)->sw_if_index[VLIB_RX] = s->sw_if_index;
 		  next0 = L2TPV2_INPUT_NEXT_IP4_INPUT;
 		  pkts_decapsulated++;
 		  break;
 		case PPP_PROTOCOL_IP6:
-		  vlib_buffer_advance (b0, l2tp_len + 2);
+		  vlib_buffer_advance (b0, ppp_off + 2);
 		  vnet_buffer (b0)->sw_if_index[VLIB_RX] = s->sw_if_index;
 		  next0 = L2TPV2_INPUT_NEXT_IP6_INPUT;
 		  pkts_decapsulated++;
