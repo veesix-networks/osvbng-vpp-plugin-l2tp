@@ -93,6 +93,7 @@ vl_api_l2tpv2_add_del_session_t_handler (
   a.raw_opaque = ntohl (mp->raw_opaque);
   a.decap_vrf_id = ntohl (mp->decap_vrf_id);
   a.encap_if_index = ntohl (mp->encap_if_index);
+  a.ppp_hdr_skip = mp->ppp_hdr_skip;
 
   rv = vnet_l2tpv2_add_del_session (&a, &sw_if_index);
 
@@ -192,6 +193,7 @@ send_l2tpv2_session_details (l2tpv2_session_t *s,
   rmp->raw_opaque = htonl (s->raw_opaque);
   rmp->decap_vrf_id = htonl (s->decap_fib_index);
   rmp->encap_if_index = htonl (s->encap_if_index);
+  rmp->ppp_hdr_skip = s->ppp_hdr_skip;
 
   vl_api_send_msg (reg, (u8 *) rmp);
 }

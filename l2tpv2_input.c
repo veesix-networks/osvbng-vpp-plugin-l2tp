@@ -212,15 +212,16 @@ VLIB_NODE_FN (l2tpv2_input_node)
 	  l2tpv2_session_t *s =
 	    pool_elt_at_index (l2m->sessions, session_index);
 
-	  /* RFC 1662 §3.1: senders MAY include the HDLC Address+Control
-	   * (0xff 0x03) bytes even when ACFC is in effect; receivers MUST
-	   * accept frames with or without them. xl2tpd's pppd includes
-	   * them by default. Skip them before reading the PPP protocol
-	   * field. */
-	  u32 ppp_off = l2tp_len;
-	  if (b0->current_length >= ppp_off + 2
-	      && hdr[ppp_off] == 0xff && hdr[ppp_off + 1] == 0x03)
-	    ppp_off += 2;
+	  /* PPP header offset was resolved at session-create from operator
+	   * config (HDLC = 2, compressed/ACFC = 0). Single load + add,
+	   * no per-packet detect, no branch on payload bytes. */
+	  u32 ppp_off = l2tp_len + s->ppp_hdr_skip;
+	  if (PREDICT_FALSE (b0->current_length < ppp_off + 2))
+	    {
+	      error0 = L2TPV2_ERROR_TRUNCATED;
+	      pkts_truncated++;
+	      goto trace00;
+	    }
 	  ppp_proto = clib_net_to_host_u16 (*(u16 *) (hdr + ppp_off));
 
 	  if (s->decap_mode == L2TPV2_DECAP_IP)

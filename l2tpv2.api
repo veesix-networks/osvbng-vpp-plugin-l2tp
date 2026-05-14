@@ -81,6 +81,12 @@ define l2tpv2_add_del_session
 
   u32 decap_vrf_id;
   vl_api_interface_index_t encap_if_index;
+
+  /* PPP framing on data packets for this session: 2 = HDLC
+     Address+Control prefix present (default), 0 = ACFC compressed.
+     Resolved once from operator config; never changes for the life
+     of the session. */
+  u8 ppp_hdr_skip;
 };
 
 define l2tpv2_add_del_session_reply
@@ -137,6 +143,7 @@ define l2tpv2_session_details
   u32 raw_opaque;
   u32 decap_vrf_id;
   vl_api_interface_index_t encap_if_index;
+  u8 ppp_hdr_skip;
 };
 
 /** \brief Set or clear the subscriber IPv4 binding on a DECAP_IP session. */

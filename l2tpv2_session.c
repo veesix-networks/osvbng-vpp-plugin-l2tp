@@ -146,6 +146,7 @@ vnet_l2tpv2_add_del_session (
       s->peer_session_id = a->peer_session_id;
       s->decap_mode = a->decap_mode;
       s->encap_if_index = a->encap_if_index;
+      s->ppp_hdr_skip = (a->ppp_hdr_skip == 0) ? 0 : 2;
       s->raw_next_node_index = ~0;
       s->raw_next_arc = ~0;
       s->raw_opaque = 0;

@@ -166,6 +166,15 @@ typedef struct
   /* TX interface for outbound L2TP encap packets. */
   u32 encap_if_index;
 
+  /* Byte count to advance past after the L2TP header before reading
+   * the PPP protocol field on inbound data packets, and prepended
+   * back on outbound encap-raw frames. 2 = HDLC Address+Control
+   * prefix in effect (RFC 1662 §3.1); 0 = ACFC compressed. Decided
+   * at session-create from operator config and never changes for
+   * the life of the session — data path is one cache-resident load,
+   * no detect, no branch on per-packet content. */
+  u8 ppp_hdr_skip;
+
   /* Subscriber IPv4 bound on this session's per-session vnet interface.
    * DECAP_IP only. Tracked here so session-delete can run the unbind
    * before the per-session interface is torn down. */
@@ -324,6 +333,10 @@ typedef struct
 
   /* Both modes: TX interface for outbound L2TP. */
   u32 encap_if_index;
+
+  /* PPP header skip on data frames (0 or 2). See ppp_hdr_skip in
+   * l2tpv2_session_t. */
+  u8 ppp_hdr_skip;
 } vnet_l2tpv2_add_del_session_args_t;
 
 int vnet_l2tpv2_add_del_session (
