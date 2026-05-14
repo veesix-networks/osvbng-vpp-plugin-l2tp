@@ -51,8 +51,17 @@ l2tpv2_build_rewrite (vnet_main_t *vnm, u32 sw_if_index, vnet_link_t link_type,
   s = pool_elt_at_index (l2m->sessions, sess_index);
   t = pool_elt_at_index (l2m->tunnels, s->tunnel_index);
 
+  /* Adjacency is per link-type; choose the matching PPP protocol
+   * field (RFC 1661 / 1700). We don't currently handle MPLS-over-PPP
+   * adjacencies so non-IP link types build a v4-shaped rewrite that
+   * the fixup will still produce a valid L2TP frame for. */
+  u16 ppp_proto = 0x0021; /* default IPv4 */
+  if (link_type == VNET_LINK_IP6)
+    ppp_proto = 0x0057;
+
   int len = sizeof (ip4_header_t) + sizeof (udp_header_t)
-	    + sizeof (l2tpv2_data_header_t);
+	    + sizeof (l2tpv2_data_header_t) + s->ppp_hdr_skip
+	    + 2 /* PPP protocol field */;
   vec_validate_aligned (rw, len - 1, CLIB_CACHE_LINE_BYTES);
 
   ip = (ip4_header_t *) rw;
@@ -78,6 +87,16 @@ l2tpv2_build_rewrite (vnet_main_t *vnm, u32 sw_if_index, vnet_link_t link_type,
   l2tp->flags_ver = clib_host_to_net_u16 (L2TPV2_FLAGS_VER_DATA);
   l2tp->tunnel_id = clib_host_to_net_u16 (t->peer_tunnel_id);
   l2tp->session_id = clib_host_to_net_u16 (s->peer_session_id);
+
+  u8 *ppp = (u8 *) (l2tp + 1);
+  if (s->ppp_hdr_skip == 2)
+    {
+      ppp[0] = 0xff;
+      ppp[1] = 0x03;
+      ppp += 2;
+    }
+  ppp[0] = (u8) (ppp_proto >> 8);
+  ppp[1] = (u8) (ppp_proto & 0xff);
 
   return rw;
 }
